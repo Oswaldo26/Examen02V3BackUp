@@ -10,7 +10,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.Manifest
 
-open class BluetoothHelper(private val activity: Activity) {
+open class BluetoothHelper(val activity: Activity) {
 
     private val bluetoothAdapter: BluetoothAdapter? by lazy(LazyThreadSafetyMode.NONE){
         val bluetoothManager = activity.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager

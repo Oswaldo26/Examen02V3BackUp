@@ -1,45 +1,66 @@
 package com.ebookfrenzy.examen02v3
 
-
-
-
 import android.Manifest
-import android.app.Activity
-import android.bluetooth.BluetoothAdapter
 
+import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 
 
-class MainActivity : ComponentActivity() {
+import androidx.compose.ui.tooling.preview.Preview
+
+
+class MainActivity : ComponentActivity(), BeaconReceiver.BeaconListener {
 
     private lateinit var bluetoothHelper: BluetoothHelper
     private lateinit var beaconEmitter: BeaconEmitter
+    private lateinit var beaconReceiver: BeaconReceiver
+    private lateinit var positionCalculator: PositionCalculator
+    private lateinit var enableBluetoothLauncher: ActivityResultLauncher<Intent>
+    private val detectedBeacons = mutableStateListOf<Beacon>()
+    private var currentPosition by mutableStateOf(Position(0.0, 0.0))
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         bluetoothHelper = BluetoothHelper(this)
-        beaconEmitter = BeaconEmitter(BluetoothAdapter.getDefaultAdapter())
+        beaconEmitter = BeaconEmitter(this)
+        beaconReceiver = BeaconReceiver(this).apply {
+            addListener(this@MainActivity)
+        }
+        positionCalculator = PositionCalculator()
+
+        // Registrar el ActivityResultLauncher
+        enableBluetoothLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == RESULT_OK) {
+                Toast.makeText(this, "Bluetooth habilitado", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "No se pudo habilitar Bluetooth", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         setContent {
-            BluetoothApp(bluetoothHelper,beaconEmitter)
+            BluetoothApp(bluetoothHelper, beaconEmitter, beaconReceiver, detectedBeacons, currentPosition)
         }
 
         requestPermissions()
-        testBeaconDistance()
     }
 
     private fun requestPermissions() {
@@ -59,30 +80,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == BluetoothHelper.REQUEST_ENABLE_BT) {
-            if (resultCode == RESULT_OK) {
-                Toast.makeText(this, "Bluetooth habilitado", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "No se pudo habilitar Bluetooth", Toast.LENGTH_SHORT).show()
+    fun enableBluetooth() {
+        val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+        enableBluetoothLauncher.launch(enableBtIntent)
+    }
+
+    override fun onBeaconDetected(beacon: Beacon) {
+        Log.d("BeaconReceiver", beacon.toString())
+
+        if (!detectedBeacons.contains(beacon)) {
+            detectedBeacons.add(beacon)
+            positionCalculator.addBeaconData(beacon)
+            if (detectedBeacons.size >= 3) {
+                currentPosition = positionCalculator.calculatePosition()
+                Log.d("PositionCalculator", "Current Position: $currentPosition")
             }
         }
-    }
-    // Función de prueba para Beacon
-    private fun testBeaconDistance() {
-        val beacon = Beacon(uuid = "12345678-1234-1234-1234-123456789012", major = 1, minor = 1, rssi = -70)
-        val distance = beacon.calculateDistance()
-        println("Distancia estimada: $distance metros")
-        Log.d("BeaconTest", beacon.toString())
-
     }
 }
 
 @Composable
-fun BluetoothApp(bluetoothHelper: BluetoothHelper, beaconEmitter: BeaconEmitter) {
+fun BluetoothApp(
+    bluetoothHelper: BluetoothHelper,
+    beaconEmitter: BeaconEmitter,
+    beaconReceiver: BeaconReceiver,
+    detectedBeacons: List<Beacon>,
+    currentPosition: Position
+) {
     var bluetoothEnabled by remember { mutableStateOf(bluetoothHelper.isBluetoothEnabled()) }
     var advertising by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -99,7 +126,7 @@ fun BluetoothApp(bluetoothHelper: BluetoothHelper, beaconEmitter: BeaconEmitter)
             if (bluetoothEnabled) {
                 bluetoothHelper.disableBluetooth()
             } else {
-                bluetoothHelper.enableBluetooth()
+                (bluetoothHelper.activity as MainActivity).enableBluetooth()
             }
             bluetoothEnabled = bluetoothHelper.isBluetoothEnabled()
         }) {
@@ -107,23 +134,51 @@ fun BluetoothApp(bluetoothHelper: BluetoothHelper, beaconEmitter: BeaconEmitter)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
         Button(onClick = {
             if (advertising) {
                 beaconEmitter.stopAdvertising()
-                Log.d("BeaconEmitterTest", "Beacon advertising stopped")
+                Log.d("BeaconTest", "Beacon advertising stopped")
             } else {
-                beaconEmitter.startAdvertising(
-                    uuid = "12345678-1234-1234-1234-123456789012",
-                    major = 1,
-                    minor = 1,
-                    txPower = -59
-                )
-                Log.d("BeaconEmitterTest", "Beacon advertising started")
+                beaconEmitter.startAdvertising()
+                Log.d("BeaconTest", "Beacon advertising started")
             }
             advertising = !advertising
         }) {
             Text(text = if (advertising) "Detener Beacon" else "Iniciar Beacon")
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            if (scanning) {
+                beaconReceiver.stopScanning()
+                Log.d("BeaconTest", "Beacon scanning stopped")
+            } else {
+                beaconReceiver.startScanning()
+                Log.d("BeaconTest", "Beacon scanning started")
+            }
+            scanning = !scanning
+        }) {
+            Text(text = if (scanning) "Detener Escaneo" else "Iniciar Escaneo")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Beacons detectados:")
+
+        LazyColumn {
+            items(detectedBeacons) { beacon ->
+                Text(text = beacon.toString())
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        //Text(text = "Posición actual: (${currentPosition.x}, ${currentPosition.y})")
+        CanvasView(currentPosition)
     }
 }
+
+
 

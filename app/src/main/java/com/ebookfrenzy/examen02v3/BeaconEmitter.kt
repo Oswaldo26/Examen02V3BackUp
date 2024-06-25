@@ -1,68 +1,67 @@
 package com.ebookfrenzy.examen02v3
 
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
+import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
 
-class BeaconEmitter(private val bluetoothAdapter: BluetoothAdapter) {
+class BeaconEmitter(context: Context) {
 
-    private var bluetoothLeAdvertiser: BluetoothLeAdvertiser? = null
-    private var advertiseCallback: AdvertiseCallback? = null
+    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    private val advertiser: BluetoothLeAdvertiser? = bluetoothAdapter?.bluetoothLeAdvertiser
 
-    init {
-        bluetoothLeAdvertiser = bluetoothAdapter.bluetoothLeAdvertiser
-    }
-
-    @SuppressLint("MissingPermission")
-    fun startAdvertising(uuid: String, major: Int, minor: Int, txPower: Int) {
-        if (bluetoothLeAdvertiser == null) {
-            Log.e(TAG, "BluetoothLeAdvertiser is null")
-            return
-        }
-
-        val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-            .setConnectable(false)
-            .build()
-
-        val beaconUuid = ParcelUuid.fromString(uuid)
-        val beaconData = AdvertiseData.Builder()
-            .addServiceUuid(beaconUuid)
-            .setIncludeDeviceName(false)
-            .addManufacturerData(
-                MANUFACTURER_ID,
-                createBeaconData(beaconUuid, major, minor, txPower)
-            )
-            .build()
-
-        advertiseCallback = object : AdvertiseCallback() {
-            override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                super.onStartSuccess(settingsInEffect)
-                Log.i(TAG, "Beacon advertising started successfully with UUID: $uuid, Major: $major, Minor: $minor, TxPower: $txPower")
-
+    fun startAdvertising(uuid: String = "12345678-1234-1234-1234-123456789012", major: Int = 1, minor: Int = 1, txPower: Int = -59) {
+        try {
+            if (advertiser == null) {
+                Log.e(TAG, "Failed to create advertiser")
+                return
             }
 
-            override fun onStartFailure(errorCode: Int) {
-                super.onStartFailure(errorCode)
-                Log.e(TAG, "Beacon advertising failed with error code: $errorCode")
-            }
+            val settings = AdvertiseSettings.Builder()
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+                .setConnectable(false)
+                .build()
+
+            val beaconUuid = ParcelUuid.fromString(uuid)
+            val beaconData = AdvertiseData.Builder()
+                .setIncludeDeviceName(false)
+                .addServiceUuid(beaconUuid)
+                .addManufacturerData(
+                    MANUFACTURER_ID,
+                    createBeaconData(beaconUuid, major, minor, txPower)
+                )
+                .build()
+
+            advertiser.startAdvertising(settings, beaconData, advertiseCallback)
+            Log.i(TAG, "Started advertising beacon with UUID: $uuid, Major: $major, Minor: $minor, TxPower: $txPower")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException: ${e.message}")
         }
-        Log.i(TAG, "Starting beacon advertising with UUID: $uuid, Major: $major, Minor: $minor, TxPower: $txPower")
-        bluetoothLeAdvertiser?.startAdvertising(settings, beaconData, advertiseCallback)
     }
 
-    @SuppressLint("MissingPermission")
     fun stopAdvertising() {
-        if (bluetoothLeAdvertiser != null && advertiseCallback != null) {
-            bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-            advertiseCallback = null
-            Log.i(TAG, "Beacon advertising stopped")
+        try {
+            advertiser?.stopAdvertising(advertiseCallback)
+            Log.i(TAG, "Stopped advertising beacon")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException: ${e.message}")
+        }
+    }
+
+    private val advertiseCallback = object : AdvertiseCallback() {
+        override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
+            super.onStartSuccess(settingsInEffect)
+            Log.i(TAG, "Beacon advertising started successfully")
+        }
+
+        override fun onStartFailure(errorCode: Int) {
+            super.onStartFailure(errorCode)
+            Log.e(TAG, "Beacon advertising failed with error code: $errorCode")
         }
     }
 
@@ -94,6 +93,6 @@ class BeaconEmitter(private val bluetoothAdapter: BluetoothAdapter) {
 
     companion object {
         private const val TAG = "BeaconEmitter"
-        private const val MANUFACTURER_ID = 0x0000// ID de Apple, usado para iBeacons
+        private const val MANUFACTURER_ID = 0x004C // ID de Apple, usado para iBeacons
     }
 }
