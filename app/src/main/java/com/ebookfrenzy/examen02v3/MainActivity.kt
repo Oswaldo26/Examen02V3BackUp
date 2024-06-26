@@ -1,7 +1,7 @@
 package com.ebookfrenzy.examen02v3
 
-import android.Manifest
 
+import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Bundle
@@ -18,13 +18,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
-
-
-import androidx.compose.ui.tooling.preview.Preview
-
 
 class MainActivity : ComponentActivity(), BeaconReceiver.BeaconListener {
 
@@ -35,6 +30,11 @@ class MainActivity : ComponentActivity(), BeaconReceiver.BeaconListener {
     private lateinit var enableBluetoothLauncher: ActivityResultLauncher<Intent>
     private val detectedBeacons = mutableStateListOf<Beacon>()
     private var currentPosition by mutableStateOf(Position(0.0, 0.0))
+
+    // Definir los parámetros emitidos como constantes
+    val emittedBeaconUUID = "12345678-1234-1234-1234-123456789012"
+    val emittedBeaconMajor = 1
+    val emittedBeaconMinor = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,13 +88,36 @@ class MainActivity : ComponentActivity(), BeaconReceiver.BeaconListener {
     override fun onBeaconDetected(beacon: Beacon) {
         Log.d("BeaconReceiver", beacon.toString())
 
-        if (!detectedBeacons.contains(beacon)) {
+        // Verifica si es el beacon emitido por este dispositivo
+        if (beacon.uuid == emittedBeaconUUID && beacon.major == emittedBeaconMajor && beacon.minor == emittedBeaconMinor) {
+            Log.d("BeaconReceiverSame", "Detected emitted beacon: $beacon")
+        }  else {
+        Log.d("BeaconReceiver", "Detected different beacon: $beacon")
+        }
+
+        // Actualiza la lista de beacons detectados
+        val index = detectedBeacons.indexOfFirst { it.uuid == beacon.uuid && it.major == beacon.major && it.minor == beacon.minor }
+        if (index != -1) {
+            detectedBeacons[index] = beacon
+        } else {
             detectedBeacons.add(beacon)
-            positionCalculator.addBeaconData(beacon)
-            if (detectedBeacons.size >= 3) {
-                currentPosition = positionCalculator.calculatePosition()
-                Log.d("PositionCalculator", "Current Position: $currentPosition")
-            }
+        }
+
+        // Añade los datos del beacon al calculador de posición
+        positionCalculator.addBeaconData(beacon)
+
+        // Calcula la nueva posición si hay suficientes datos
+        if (detectedBeacons.size >= 3) {
+            currentPosition = positionCalculator.calculatePosition()
+            Log.d("PositionCalculator", "Current Position: $currentPosition")
+            updateUI()
+        }
+    }
+
+    private fun updateUI() {
+        // Actualizar la interfaz de usuario en tiempo real
+        runOnUiThread {
+            // Aquí puedes agregar cualquier lógica adicional de actualización de la UI
         }
     }
 }
@@ -140,7 +163,7 @@ fun BluetoothApp(
                 beaconEmitter.stopAdvertising()
                 Log.d("BeaconTest", "Beacon advertising stopped")
             } else {
-                beaconEmitter.startAdvertising()
+                beaconEmitter.startAdvertising((bluetoothHelper.activity as MainActivity).emittedBeaconUUID, (bluetoothHelper.activity as MainActivity).emittedBeaconMajor, (bluetoothHelper.activity as MainActivity).emittedBeaconMinor, -59)
                 Log.d("BeaconTest", "Beacon advertising started")
             }
             advertising = !advertising
@@ -175,10 +198,8 @@ fun BluetoothApp(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        //Text(text = "Posición actual: (${currentPosition.x}, ${currentPosition.y})")
-        CanvasView(currentPosition)
+        // Actualiza la vista del Canvas con la posición actual
+       // CanvasView(currentPosition)
     }
 }
-
-
 

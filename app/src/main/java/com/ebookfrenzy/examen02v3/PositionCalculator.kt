@@ -18,7 +18,7 @@ class PositionCalculator {
             throw IllegalArgumentException("At least 3 beacons are required to calculate position.")
         }
 
-        // Usar los tres primeros beacons para la trilateración (para simplificación)
+        // Usar los tres primeros beacons para la trilateración (para simplificación)se
         val beacon1 = beaconDataList[0]
         val beacon2 = beaconDataList[1]
         val beacon3 = beaconDataList[2]
